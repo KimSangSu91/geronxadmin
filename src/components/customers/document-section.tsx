@@ -3,26 +3,18 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   uploadCustomerDocument,
   getDocumentSignedUrl,
 } from "@/app/customers/[customerId]/actions";
 import { formatDateTime } from "@/lib/format";
+import { DOC_TYPE_LABEL } from "@/lib/customer-documents";
 
-const DOC_TYPE_LABEL: Record<string, string> = {
-  CONTRACT: "계약서",
-  HANDOVER: "인수증",
-  AERIAL_VIEW: "조감도",
-  OTHER: "기타",
-};
+const DOC_TYPE_OPTIONS = ["CONTRACT", "HANDOVER", "OTHER"] as const;
 
 type DocumentRow = {
   id: string;
@@ -41,6 +33,11 @@ export function DocumentSection({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [docType, setDocType] = useState<string>("CONTRACT");
+
+  const registeredTypes = new Set(
+    documents.filter((d) => d.finalFileUrl).map((d) => d.docType),
+  );
 
   function handleView(documentId: string) {
     setViewingId(documentId);
@@ -59,7 +56,7 @@ export function DocumentSection({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-col gap-3"
           action={(formData: FormData) => {
             setError(null);
             formData.set("customerId", customerId);
@@ -68,32 +65,43 @@ export function DocumentSection({
                 await uploadCustomerDocument(formData);
               } catch (e) {
                 setError(
-                  e instanceof Error ? e.message : "업로드에 실패했습니다.",
+                  e instanceof Error ? e.message : "등록에 실패했습니다.",
                 );
               }
             });
           }}
         >
-          <Select name="docType" defaultValue="CONTRACT">
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="CONTRACT">계약서</SelectItem>
-              <SelectItem value="HANDOVER">인수증</SelectItem>
-              <SelectItem value="OTHER">기타</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            type="file"
-            name="file"
-            accept="application/pdf,.pdf"
-            required
-            className="max-w-56"
-          />
-          <Button type="submit" size="sm" disabled={isPending}>
-            {isPending ? "처리 중..." : "업로드"}
-          </Button>
+          <RadioGroup
+            name="docType"
+            value={docType}
+            onValueChange={(value) => setDocType(String(value))}
+            className="flex flex-row flex-wrap gap-5"
+          >
+            {DOC_TYPE_OPTIONS.map((type) => (
+              <div key={type} className="flex items-center gap-1.5">
+                <RadioGroupItem id={`docType-${type}`} value={type} />
+                <Label htmlFor={`docType-${type}`} className="font-normal">
+                  {DOC_TYPE_LABEL[type]}
+                </Label>
+                {registeredTypes.has(type) && (
+                  <Badge variant="secondary">등록완료</Badge>
+                )}
+              </div>
+            ))}
+          </RadioGroup>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              type="file"
+              name="file"
+              accept="application/pdf,.pdf"
+              required
+              className="max-w-56"
+            />
+            <Button type="submit" size="sm" disabled={isPending}>
+              {isPending ? "처리 중..." : "등록"}
+            </Button>
+          </div>
         </form>
         {error && <p className="text-sm text-destructive">{error}</p>}
 

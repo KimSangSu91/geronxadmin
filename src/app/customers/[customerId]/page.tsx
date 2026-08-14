@@ -2,11 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { CustomerStatusBadge } from "@/components/customers/status-badge";
-import { CustomerStatusSelect } from "@/components/customers/customer-status-select";
+import { CustomerStatusStepper } from "@/components/customers/customer-status-stepper";
 import { CustomerEditSheet } from "@/components/customers/customer-edit-sheet";
 import { AssignedDevicesCard } from "@/components/customers/assigned-devices-card";
 import { DocumentSection } from "@/components/customers/document-section";
+import { MissingDocumentWarning } from "@/components/customers/missing-document-warning";
 import { ActionLogForm } from "@/components/customers/action-log-form";
 import { ChecklistItemRow } from "@/components/customers/checklist-item-row";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import {
   CUSTOMER_STATUS_LABEL,
   CUSTOMER_STATUS_ORDER,
 } from "@/lib/customer-status";
+import { getMissingRequiredDocLabels } from "@/lib/customer-documents";
 
 export default async function CustomerDetailPage(
   props: PageProps<"/customers/[customerId]">,
@@ -56,6 +57,10 @@ export default async function CustomerDetailPage(
   const otherStatuses = CUSTOMER_STATUS_ORDER.filter(
     (status) => status !== "INQUIRY" && status !== "IN_PROGRESS",
   );
+  const missingDocLabels = getMissingRequiredDocLabels(
+    customer.status,
+    customer.documents.filter((d) => d.finalFileUrl).map((d) => d.docType),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -69,20 +74,13 @@ export default async function CustomerDetailPage(
       <Card>
         <CardHeader className="flex flex-row items-start justify-between">
           <div>
-            <CardTitle className="text-xl">{customer.name}</CardTitle>
+            <div className="flex items-center gap-1.5">
+              <CardTitle className="text-xl">{customer.name}</CardTitle>
+              <MissingDocumentWarning missingLabels={missingDocLabels} />
+            </div>
             <p className="text-sm text-muted-foreground">{customer.code}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <CustomerStatusSelect
-              customerId={customer.id}
-              currentStatus={customer.status}
-              currentRemainingUsagePeriod={customer.remainingUsagePeriod}
-            />
-            <CustomerEditSheet
-              customer={customer}
-              staffOptions={staffOptions}
-            />
-          </div>
+          <CustomerEditSheet customer={customer} staffOptions={staffOptions} />
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
@@ -119,6 +117,12 @@ export default async function CustomerDetailPage(
           </dl>
         </CardContent>
       </Card>
+
+      <CustomerStatusStepper
+        customerId={customer.id}
+        currentStatus={customer.status}
+        currentRemainingUsagePeriod={customer.remainingUsagePeriod}
+      />
 
       <AssignedDevicesCard
         customerId={customer.id}
@@ -212,17 +216,7 @@ export default async function CustomerDetailPage(
         </TabsContent>
 
         {otherStatuses.map((status) => (
-          <TabsContent key={status} value={status} className="pt-4">
-            <Card>
-              <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-                <span>
-                  {CUSTOMER_STATUS_LABEL[status]} 상태에 대한 별도 이력 화면은
-                  아직 없습니다. 현재 상태:
-                </span>
-                <CustomerStatusBadge status={customer.status} />
-              </CardContent>
-            </Card>
-          </TabsContent>
+          <TabsContent key={status} value={status} />
         ))}
       </Tabs>
     </div>

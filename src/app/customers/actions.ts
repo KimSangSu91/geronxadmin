@@ -4,20 +4,34 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 
+const CUSTOMER_CODE_PREFIX = "C";
+const CUSTOMER_CODE_DIGITS = 4;
+
+async function generateNextCustomerCode(): Promise<string> {
+  const customers = await prisma.customer.findMany({
+    where: { code: { startsWith: CUSTOMER_CODE_PREFIX } },
+    select: { code: true },
+  });
+
+  const codePattern = new RegExp(`^${CUSTOMER_CODE_PREFIX}(\\d+)$`);
+  const maxNumber = customers.reduce((max, { code }) => {
+    const match = code.match(codePattern);
+    if (!match) return max;
+    return Math.max(max, Number(match[1]));
+  }, 0);
+
+  return `${CUSTOMER_CODE_PREFIX}${String(maxNumber + 1).padStart(CUSTOMER_CODE_DIGITS, "0")}`;
+}
+
 export async function createCustomer(formData: FormData) {
-  const code = String(formData.get("code") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
 
-  if (!code || !name) {
-    throw new Error("고객사코드와 시설명은 필수입니다.");
+  if (!name) {
+    throw new Error("시설명은 필수입니다.");
   }
 
   const address = String(formData.get("address") ?? "").trim() || null;
-  const contactName = String(formData.get("contactName") ?? "").trim() || null;
-  const contactPhone = String(formData.get("contactPhone") ?? "").trim() || null;
-  const facilityScale = String(formData.get("facilityScale") ?? "").trim() || null;
-  const assignedStaffId = String(formData.get("assignedStaffId") ?? "") || null;
-  const contractedDeviceCount = Number(formData.get("contractedDeviceCount") ?? 0) || 0;
+  const code = await generateNextCustomerCode();
 
   const activeChecklistItems = await prisma.checklistItemMaster.findMany({
     where: { isActive: true },
@@ -29,11 +43,6 @@ export async function createCustomer(formData: FormData) {
       code,
       name,
       address,
-      contactName,
-      contactPhone,
-      facilityScale,
-      assignedStaffId,
-      contractedDeviceCount,
       checklistItems: {
         create: activeChecklistItems.map((item) => ({ itemId: item.id })),
       },

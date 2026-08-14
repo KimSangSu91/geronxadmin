@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { CustomerStatus, type Prisma } from "@/generated/prisma/client";
 import { CUSTOMER_STATUS_ORDER } from "@/lib/customer-status";
 import { formatDate } from "@/lib/format";
+import { getMissingRequiredDocLabels } from "@/lib/customer-documents";
 import { CustomerFilters } from "@/components/customers/customer-filters";
 import { CustomerCreateDialog } from "@/components/customers/customer-create-dialog";
 import { CustomerStatusBadge } from "@/components/customers/status-badge";
+import { MissingDocumentWarning } from "@/components/customers/missing-document-warning";
 import {
   Table,
   TableBody,
@@ -54,7 +56,7 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
       : {}),
   };
 
-  const [totalCount, customers, staffOptions] = await Promise.all([
+  const [totalCount, customers] = await Promise.all([
     prisma.customer.count({ where }),
     prisma.customer.findMany({
       where,
@@ -62,11 +64,27 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    prisma.staff.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
   ]);
+
+  const completedIds = customers
+    .filter((c) => c.status === "COMPLETED")
+    .map((c) => c.id);
+  const registeredDocs =
+    completedIds.length > 0
+      ? await prisma.customerDocument.findMany({
+          where: {
+            customerId: { in: completedIds },
+            finalFileUrl: { not: null },
+          },
+          select: { customerId: true, docType: true },
+        })
+      : [];
+  const registeredTypesByCustomer = new Map<string, string[]>();
+  for (const doc of registeredDocs) {
+    const list = registeredTypesByCustomer.get(doc.customerId) ?? [];
+    list.push(doc.docType);
+    registeredTypesByCustomer.set(doc.customerId, list);
+  }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const buildPageHref = (targetPage: number) => {
@@ -86,7 +104,7 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
             전체 {totalCount.toLocaleString()}건
           </p>
         </div>
-        <CustomerCreateDialog staffOptions={staffOptions} />
+        <CustomerCreateDialog />
       </div>
 
       <CustomerFilters initialQuery={q} initialStatuses={statuses} />
@@ -127,9 +145,15 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
                 <TableCell className="p-0">
                   <Link
                     href={`/customers/${customer.id}`}
-                    className="block px-2 py-2 font-medium"
+                    className="flex items-center gap-1.5 px-2 py-2 font-medium"
                   >
                     {customer.name}
+                    <MissingDocumentWarning
+                      missingLabels={getMissingRequiredDocLabels(
+                        customer.status,
+                        registeredTypesByCustomer.get(customer.id) ?? [],
+                      )}
+                    />
                   </Link>
                 </TableCell>
                 <TableCell className="p-0">
