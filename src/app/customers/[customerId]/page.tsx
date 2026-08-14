@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { CustomerStatusBadge } from "@/components/customers/status-badge";
 import { CustomerStatusSelect } from "@/components/customers/customer-status-select";
+import { CustomerEditSheet } from "@/components/customers/customer-edit-sheet";
+import { AssignedDevicesCard } from "@/components/customers/assigned-devices-card";
+import { DocumentSection } from "@/components/customers/document-section";
 import { ActionLogForm } from "@/components/customers/action-log-form";
 import { ChecklistItemRow } from "@/components/customers/checklist-item-row";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,20 +21,34 @@ export default async function CustomerDetailPage(
 ) {
   const { customerId } = await props.params;
 
-  const customer = await prisma.customer.findUnique({
-    where: { id: customerId },
-    include: {
-      assignedStaff: true,
-      actionLogs: {
-        orderBy: { actionDate: "desc" },
-        include: { authorStaff: true },
+  const [customer, staffOptions, availableDevices] = await Promise.all([
+    prisma.customer.findUnique({
+      where: { id: customerId },
+      include: {
+        assignedStaff: true,
+        actionLogs: {
+          orderBy: { actionDate: "desc" },
+          include: { authorStaff: true },
+        },
+        checklistItems: {
+          include: { item: true },
+          orderBy: { item: { sortOrder: "asc" } },
+        },
+        deviceMappings: {
+          where: { unmappedAt: null },
+          include: { device: { include: { deviceType: true } } },
+          orderBy: { mappedAt: "desc" },
+        },
+        documents: { orderBy: { createdAt: "desc" } },
       },
-      checklistItems: {
-        include: { item: true },
-        orderBy: { item: { sortOrder: "asc" } },
-      },
-    },
-  });
+    }),
+    prisma.staff.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.device.findMany({
+      where: { status: "IN_STOCK" },
+      include: { deviceType: true },
+      orderBy: { deviceName: "asc" },
+    }),
+  ]);
 
   if (!customer) notFound();
 
@@ -55,26 +72,81 @@ export default async function CustomerDetailPage(
             <CardTitle className="text-xl">{customer.name}</CardTitle>
             <p className="text-sm text-muted-foreground">{customer.code}</p>
           </div>
-          <CustomerStatusSelect
-            customerId={customer.id}
-            currentStatus={customer.status}
-          />
+          <div className="flex items-center gap-2">
+            <CustomerStatusSelect
+              customerId={customer.id}
+              currentStatus={customer.status}
+              currentRemainingUsagePeriod={customer.remainingUsagePeriod}
+            />
+            <CustomerEditSheet
+              customer={customer}
+              staffOptions={staffOptions}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <InfoItem label="주소" value={customer.address} />
             <InfoItem label="담당자" value={customer.contactName} />
             <InfoItem label="담당자 연락처" value={customer.contactPhone} />
+            <InfoItem label="담당자 이메일" value={customer.contactEmail} />
+            <InfoItem label="담당자 부서명" value={customer.contactDepartment} />
             <InfoItem label="시설규모" value={customer.facilityScale} />
             <InfoItem label="내부 담당자" value={customer.assignedStaff?.name} />
             <InfoItem
               label="계약 장비 수"
               value={String(customer.contractedDeviceCount)}
             />
+            <InfoItem
+              label="사업자등록번호"
+              value={customer.businessRegistrationNumber}
+            />
+            <InfoItem
+              label="법인등록번호"
+              value={customer.corporateRegistrationNumber}
+            />
+            <InfoItem label="대표이메일" value={customer.representativeEmail} />
+            <InfoItem
+              label="세금계산서 수신 이메일"
+              value={customer.taxInvoiceEmail}
+            />
+            <InfoItem label="도메인키" value={customer.domainKey} />
+            <InfoItem
+              label="남은 이용 기간"
+              value={customer.remainingUsagePeriod}
+            />
             <InfoItem label="등록일" value={formatDate(customer.createdAt)} />
           </dl>
         </CardContent>
       </Card>
+
+      <AssignedDevicesCard
+        customerId={customer.id}
+        mappedDevices={customer.deviceMappings.map((m) => ({
+          mappingId: m.id,
+          deviceId: m.device.id,
+          deviceName: m.device.deviceName,
+          deviceUid: m.device.deviceUid,
+          deviceTypeName: m.device.deviceType.name,
+          mappedAt: m.mappedAt.toISOString(),
+        }))}
+        availableDevices={availableDevices.map((d) => ({
+          id: d.id,
+          deviceName: d.deviceName,
+          deviceUid: d.deviceUid,
+          deviceTypeName: d.deviceType.name,
+        }))}
+      />
+
+      <DocumentSection
+        customerId={customer.id}
+        documents={customer.documents.map((doc) => ({
+          id: doc.id,
+          docType: doc.docType,
+          finalFileUrl: doc.finalFileUrl,
+          createdAt: doc.createdAt.toISOString(),
+        }))}
+      />
 
       <Tabs defaultValue={customer.status}>
         <TabsList>

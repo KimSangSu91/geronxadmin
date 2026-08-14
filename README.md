@@ -26,6 +26,10 @@ cp .env.example .env
 
 Supabase 대시보드 > Project Settings > Database / API 에서 값을 확인할 수 있습니다.
 
+계약서/인수증 PDF 업로드 기능(고객사 상세 > 문서)을 사용하려면 Supabase Storage에
+**`customer-documents`** 버킷을 만들어야 합니다. 계약서 등 민감 문서이므로 **비공개(private)**로
+생성하세요 — 서버에서 서비스 롤 키로 업로드하고, 조회 시마다 만료되는 서명 URL을 발급합니다.
+
 ### 2. 의존성 설치 & Prisma 클라이언트 생성
 
 ```bash

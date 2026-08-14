@@ -98,6 +98,7 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
               <TableHead className="w-16">번호</TableHead>
               <TableHead>고객사명</TableHead>
               <TableHead>고객사코드</TableHead>
+              <TableHead>도메인키</TableHead>
               <TableHead>서비스이용상태</TableHead>
               <TableHead>등록일</TableHead>
             </TableRow>
@@ -106,7 +107,7 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
             {customers.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="h-24 text-center text-muted-foreground"
                 >
                   검색 결과가 없습니다.
@@ -134,6 +135,11 @@ export default async function CustomersPage(props: PageProps<"/customers">) {
                 <TableCell className="p-0">
                   <Link href={`/customers/${customer.id}`} className="block px-2 py-2">
                     {customer.code}
+                  </Link>
+                </TableCell>
+                <TableCell className="p-0">
+                  <Link href={`/customers/${customer.id}`} className="block px-2 py-2">
+                    {customer.domainKey ?? "-"}
                   </Link>
                 </TableCell>
                 <TableCell className="p-0">

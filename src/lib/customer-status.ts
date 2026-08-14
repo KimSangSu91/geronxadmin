@@ -3,7 +3,7 @@ import { CustomerStatus } from "@/generated/prisma/client";
 export const CUSTOMER_STATUS_LABEL: Record<CustomerStatus, string> = {
   INQUIRY: "문의접수",
   IN_PROGRESS: "진행중",
-  COMPLETED: "완료",
+  COMPLETED: "서비스 이용중",
   STOPPED: "진행중지",
   PENDING: "진행대기",
 };

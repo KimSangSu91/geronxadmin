@@ -64,6 +64,7 @@ export async function bulkMapDevices(formData: FormData) {
   );
 
   revalidatePath("/devices");
+  revalidatePath(`/customers/${customerId}`);
 }
 
 export async function bulkUnmapDevices(formData: FormData) {
@@ -74,6 +75,14 @@ export async function bulkUnmapDevices(formData: FormData) {
     where: { id: { in: deviceIds }, status: DeviceStatus.MAPPING },
     select: { id: true, status: true },
   });
+
+  const affectedCustomerIds = (
+    await prisma.deviceMapping.findMany({
+      where: { deviceId: { in: devices.map((d) => d.id) }, unmappedAt: null },
+      select: { customerId: true },
+      distinct: ["customerId"],
+    })
+  ).map((m) => m.customerId);
 
   await prisma.$transaction(
     devices.flatMap((device) => [
@@ -96,6 +105,7 @@ export async function bulkUnmapDevices(formData: FormData) {
   );
 
   revalidatePath("/devices");
+  affectedCustomerIds.forEach((id) => revalidatePath(`/customers/${id}`));
 }
 
 export async function changeDeviceStatus(formData: FormData) {
