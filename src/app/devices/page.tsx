@@ -1,10 +1,139 @@
-export default function DevicesPage() {
+import { prisma } from "@/lib/prisma";
+import type { DeviceStatus, Prisma } from "@/generated/prisma/client";
+import { DEVICE_STATUS_ORDER } from "@/lib/device-status";
+import { DeviceFilters } from "@/components/devices/device-filters";
+import { DeviceCreateDialog } from "@/components/devices/device-create-dialog";
+import { DeviceTable } from "@/components/devices/device-table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+
+const PAGE_SIZE = 20;
+
+function parseStatuses(raw: string[]): DeviceStatus[] {
+  return raw.filter((s): s is DeviceStatus =>
+    DEVICE_STATUS_ORDER.includes(s as DeviceStatus),
+  );
+}
+
+export default async function DevicesPage(props: PageProps<"/devices">) {
+  const searchParams = await props.searchParams;
+
+  const q = typeof searchParams.q === "string" ? searchParams.q : "";
+  const statusParam = searchParams.status;
+  const statuses = parseStatuses(
+    Array.isArray(statusParam) ? statusParam : statusParam ? [statusParam] : [],
+  );
+  const typeParam = searchParams.type;
+  const typeIds = Array.isArray(typeParam)
+    ? typeParam
+    : typeParam
+      ? [typeParam]
+      : [];
+  const page = Math.max(1, Number(searchParams.page) || 1);
+
+  const where: Prisma.DeviceWhereInput = {
+    ...(statuses.length > 0 ? { status: { in: statuses } } : {}),
+    ...(typeIds.length > 0 ? { deviceTypeId: { in: typeIds } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { deviceName: { contains: q, mode: "insensitive" } },
+            { deviceUid: { contains: q, mode: "insensitive" } },
+            { serialNumber: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [totalCount, devices, deviceTypeOptions, customerOptions] =
+    await Promise.all([
+      prisma.device.count({ where }),
+      prisma.device.findMany({
+        where,
+        include: { deviceType: true },
+        orderBy: { registeredDate: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+      }),
+      prisma.deviceTypeMaster.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.customer.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const buildPageHref = (targetPage: number) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    statuses.forEach((s) => params.append("status", s));
+    typeIds.forEach((t) => params.append("type", t));
+    params.set("page", String(targetPage));
+    return `/devices?${params.toString()}`;
+  };
+
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-2xl font-semibold tracking-tight">내부장비 관리</h1>
-      <p className="text-muted-foreground">
-        내부장비 리스트 화면은 다음 단계에서 구현됩니다.
-      </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">내부장비 관리</h1>
+          <p className="text-muted-foreground">
+            전체 {totalCount.toLocaleString()}건
+          </p>
+        </div>
+        <DeviceCreateDialog deviceTypeOptions={deviceTypeOptions} />
+      </div>
+
+      <DeviceFilters
+        initialQuery={q}
+        initialStatuses={statuses}
+        initialTypeIds={typeIds}
+        deviceTypeOptions={deviceTypeOptions}
+      />
+
+      <DeviceTable devices={devices} customerOptions={customerOptions} />
+
+      {totalPages > 1 && (
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href={buildPageHref(Math.max(1, page - 1))}
+                aria-disabled={page === 1}
+              />
+            </PaginationItem>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(
+                (p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1,
+              )
+              .map((p, i, arr) => (
+                <PaginationItem key={p}>
+                  {i > 0 && arr[i - 1] !== p - 1 ? (
+                    <span className="px-2 text-muted-foreground">…</span>
+                  ) : null}
+                  <PaginationLink href={buildPageHref(p)} isActive={p === page}>
+                    {p}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+            <PaginationItem>
+              <PaginationNext
+                href={buildPageHref(Math.min(totalPages, page + 1))}
+                aria-disabled={page === totalPages}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
     </div>
   );
 }
