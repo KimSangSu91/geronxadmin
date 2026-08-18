@@ -36,9 +36,10 @@ model Staff {
 enum CustomerStatus {
   INQUIRY // 문의접수
   IN_PROGRESS // 진행중
-  COMPLETED // 완료
+  COMPLETED // 서비스 이용중
   STOPPED // 진행중지
   PENDING // 진행대기
+  WITHDRAWN // 이용중단
 
   @@map("customer_status")
 }
