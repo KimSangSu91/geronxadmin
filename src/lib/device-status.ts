@@ -26,6 +26,15 @@ export const DEVICE_STATUSES_REQUIRING_UNMAP: DeviceStatus[] = [
   "DISPOSED",
 ];
 
+// 고객사 매핑이 가능한 상태 — mapDevicesToCustomer에서 사용.
+// 매핑 해제(반납대기) 직후에도 다른 고객사로 바로 재매핑할 수 있어야 하므로
+// RETURN_PENDING도 포함한다. 파손입고/폐기 장비는 매핑 대상에서 제외한다.
+export const DEVICE_STATUSES_ELIGIBLE_FOR_MAPPING: DeviceStatus[] = [
+  "IN_STOCK",
+  "MAPPING",
+  "RETURN_PENDING",
+];
+
 export const DEVICE_STATUS_BADGE_VARIANT: Record<
   DeviceStatus,
   "default" | "secondary" | "outline" | "destructive"

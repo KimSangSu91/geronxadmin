@@ -38,7 +38,15 @@ export function DeviceBulkImportDialog() {
   function handleSubmit(formData: FormData) {
     setErrors(null);
     startTransition(async () => {
-      const result = await bulkImportDevices(formData);
+      let result;
+      try {
+        result = await bulkImportDevices(formData);
+      } catch (e) {
+        // 요청 크기 초과 등 서버 액션 자체가 실패한 경우까지 화면에서 알 수 있도록 처리
+        const message = e instanceof Error ? e.message : "업로드 중 오류가 발생했습니다.";
+        setErrors([{ row: 0, messages: [message] }]);
+        return;
+      }
       if (result.success) {
         toast.success(`장비 ${result.insertedCount}건을 등록했습니다.`);
         setOpen(false);

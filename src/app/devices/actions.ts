@@ -7,6 +7,7 @@ import { DeviceStatus, type Prisma } from "@/generated/prisma/client";
 import {
   DEVICE_STATUS_LABEL,
   DEVICE_STATUSES_REQUIRING_UNMAP,
+  DEVICE_STATUSES_ELIGIBLE_FOR_MAPPING,
 } from "@/lib/device-status";
 
 export async function createDevice(formData: FormData) {
@@ -107,6 +108,7 @@ export async function bulkMapDevices(formData: FormData) {
   );
 
   revalidatePath("/devices");
+  devices.forEach((d) => revalidatePath(`/devices/${d.id}`));
   revalidatePath(`/customers/${customerId}`);
 }
 
@@ -148,6 +150,7 @@ export async function bulkUnmapDevices(formData: FormData) {
   );
 
   revalidatePath("/devices");
+  devices.forEach((d) => revalidatePath(`/devices/${d.id}`));
   affectedCustomerIds.forEach((id) => revalidatePath(`/customers/${id}`));
 }
 
@@ -198,7 +201,7 @@ export async function mapDevicesToCustomer(
   const devices = await prisma.device.findMany({
     where: {
       id: { in: deviceIds },
-      status: { in: [DeviceStatus.IN_STOCK, DeviceStatus.MAPPING] },
+      status: { in: DEVICE_STATUSES_ELIGIBLE_FOR_MAPPING },
     },
     include: { mappings: { where: { unmappedAt: null } } },
   });
@@ -255,6 +258,7 @@ export async function mapDevicesToCustomer(
   }
 
   revalidatePath("/devices");
+  devices.forEach((d) => revalidatePath(`/devices/${d.id}`));
   affectedCustomerIds.forEach((id) => revalidatePath(`/customers/${id}`));
 
   return { mappedCount };
@@ -319,6 +323,7 @@ export async function addSanitization(formData: FormData) {
   await prisma.deviceSanitization.create({ data: { deviceId, result } });
 
   revalidatePath("/devices");
+  revalidatePath(`/devices/${deviceId}`);
 }
 
 export async function addAsHistory(formData: FormData) {
@@ -331,6 +336,7 @@ export async function addAsHistory(formData: FormData) {
   await prisma.deviceAsHistory.create({ data: { deviceId, issueDescription } });
 
   revalidatePath("/devices");
+  revalidatePath(`/devices/${deviceId}`);
 }
 
 export async function resolveAsHistory(formData: FormData) {
@@ -338,12 +344,13 @@ export async function resolveAsHistory(formData: FormData) {
   const resolution = String(formData.get("resolution") ?? "").trim() || null;
   if (!asHistoryId) throw new Error("잘못된 요청입니다.");
 
-  await prisma.deviceAsHistory.update({
+  const asHistory = await prisma.deviceAsHistory.update({
     where: { id: asHistoryId },
     data: { resolvedAt: new Date(), resolution },
   });
 
   revalidatePath("/devices");
+  revalidatePath(`/devices/${asHistory.deviceId}`);
 }
 
 export type DeviceTimelineEntry = {
@@ -490,6 +497,28 @@ function cellToText(value: ExcelJS.CellValue): string {
 // Excel(.xlsx) A~F열 일괄 등록 — 디바이스구분/디바이스명/디바이스아이디/시리얼/제조번호/설명
 // 한 행이라도 검증에 실패하면 아무것도 등록하지 않는다 (전체 성공 또는 전체 실패)
 export async function bulkImportDevices(
+  formData: FormData,
+): Promise<DeviceImportResult> {
+  // 파싱/검증/DB 등록 중 예상치 못한 오류(파일 손상 등)도 화면에서 원인을 확인할 수
+  // 있도록 절대 그대로 throw하지 않고 항상 결과 형태로 반환한다. revalidatePath는
+  // DB 등록이 성공한 뒤에만 별도로 호출해 — 여기서 문제가 생겨도 이미 커밋된
+  // 등록 성공 결과 자체는 그대로 사용자에게 전달되도록 분리한다.
+  const result = await runBulkImportDevices(formData).catch(
+    (e): DeviceImportResult => {
+      const message =
+        e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.";
+      return { success: false, errors: [{ row: 0, messages: [message] }] };
+    },
+  );
+
+  if (result.success) {
+    revalidatePath("/devices");
+  }
+
+  return result;
+}
+
+async function runBulkImportDevices(
   formData: FormData,
 ): Promise<DeviceImportResult> {
   const file = formData.get("file");
@@ -639,6 +668,5 @@ export async function bulkImportDevices(
     })),
   });
 
-  revalidatePath("/devices");
   return { success: true, insertedCount: parsedRows.length };
 }
