@@ -73,7 +73,7 @@ export function CustomerStatusStepper({
               type="button"
               onClick={() => handleSelect(step)}
               disabled={isPending}
-              className="flex flex-col items-center gap-1.5 px-1 disabled:cursor-not-allowed"
+              className="flex cursor-pointer flex-col items-center gap-1.5 px-1 disabled:cursor-not-allowed"
             >
               <span
                 className={cn(
