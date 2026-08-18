@@ -82,7 +82,16 @@ export function AssignedDevicesCard({
                   할당 가능한 재고 장비가 없습니다.
                 </p>
               ) : (
-                <Select name="deviceIds" required>
+                <Select
+                  name="deviceIds"
+                  required
+                  items={Object.fromEntries(
+                    availableDevices.map((d) => [
+                      d.id,
+                      `${d.deviceTypeName} · ${d.deviceName} (${d.deviceUid})`,
+                    ]),
+                  )}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="재고 장비 선택" />
                   </SelectTrigger>

@@ -36,6 +36,7 @@ import {
   type MappingConflict,
 } from "@/app/devices/actions";
 import type { DeviceStatus } from "@/generated/prisma/client";
+import { toSelectItems } from "@/lib/utils";
 
 type DeviceRow = {
   id: string;
@@ -297,7 +298,11 @@ export function DeviceTable({
             <DialogHeader>
               <DialogTitle>{selected.size}건 매핑 — 고객사 선택</DialogTitle>
             </DialogHeader>
-            <Select name="customerId" required>
+            <Select
+              name="customerId"
+              required
+              items={toSelectItems(customerOptions)}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="고객사 선택" />
               </SelectTrigger>

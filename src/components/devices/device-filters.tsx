@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, toSelectItems } from "@/lib/utils";
 import type { DeviceStatus } from "@/generated/prisma/client";
 import { DEVICE_STATUS_LABEL, DEVICE_STATUS_ORDER } from "@/lib/device-status";
 
@@ -97,6 +97,11 @@ export function DeviceFilters({
       <Select
         value={initialCustomerFilter || ALL_VALUE}
         onValueChange={handleCustomerChange}
+        items={{
+          [ALL_VALUE]: "전체",
+          [DEVICE_UNMAPPED_FILTER_VALUE]: "미매핑",
+          ...toSelectItems(customerOptions),
+        }}
       >
         <SelectTrigger className="w-52">
           <SelectValue placeholder="고객사 필터" />

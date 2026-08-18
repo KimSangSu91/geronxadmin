@@ -5,6 +5,7 @@ import { getDeviceDetail } from "@/app/devices/actions";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { DeviceStatusBadge } from "@/components/devices/status-badge";
 import { DeviceEditSheet } from "@/components/devices/device-edit-sheet";
+import { DeviceMappingSection } from "@/components/devices/device-mapping-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function DeviceDetailPage(
@@ -12,10 +13,14 @@ export default async function DeviceDetailPage(
 ) {
   const { deviceId } = await props.params;
 
-  const [detail, deviceTypeOptions] = await Promise.all([
+  const [detail, deviceTypeOptions, customerOptions] = await Promise.all([
     getDeviceDetail(deviceId),
     prisma.deviceTypeMaster.findMany({
       where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.customer.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
@@ -55,10 +60,6 @@ export default async function DeviceDetailPage(
             <InfoItem label="제조번호" value={detail.manufacturingNumber} />
             <InfoItem label="입고일" value={formatDate(detail.receivedDate)} />
             <InfoItem label="등록일" value={formatDate(detail.registeredDate)} />
-            <InfoItem
-              label="현재 매핑 고객사"
-              value={detail.currentCustomerName}
-            />
           </dl>
 
           <div>
@@ -66,6 +67,14 @@ export default async function DeviceDetailPage(
             <dd className="mt-0.5 text-sm whitespace-pre-wrap">
               {detail.description || "-"}
             </dd>
+          </div>
+
+          <div className="border-t pt-4">
+            <DeviceMappingSection
+              deviceId={detail.id}
+              currentCustomerName={detail.currentCustomerName}
+              customerOptions={customerOptions}
+            />
           </div>
         </CardContent>
       </Card>

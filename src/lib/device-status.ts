@@ -18,6 +18,14 @@ export const DEVICE_STATUS_ORDER: DeviceStatus[] = [
   "DISPOSED",
 ];
 
+// 이 상태로 전환되면 고객사 매핑이 존재해서는 안 된다 — changeDeviceStatus에서
+// 활성 매핑을 자동으로 해제하는 데 사용 (재고 / 회수완료 / 폐기)
+export const DEVICE_STATUSES_REQUIRING_UNMAP: DeviceStatus[] = [
+  "IN_STOCK",
+  "RETRIEVED",
+  "DISPOSED",
+];
+
 export const DEVICE_STATUS_BADGE_VARIANT: Record<
   DeviceStatus,
   "default" | "secondary" | "outline" | "destructive"

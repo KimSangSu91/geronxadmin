@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { updateCustomerInfo } from "@/app/customers/[customerId]/actions";
+import { toSelectItems } from "@/lib/utils";
 
 type StaffOption = { id: string; name: string };
 
@@ -120,6 +121,7 @@ export function CustomerEditSheet({
             <Select
               name="assignedStaffId"
               defaultValue={customer.assignedStaffId ?? undefined}
+              items={toSelectItems(staffOptions)}
             >
               <SelectTrigger id="assignedStaffId" className="w-full">
                 <SelectValue placeholder="담당자 선택" />

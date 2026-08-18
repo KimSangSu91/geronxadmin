@@ -4,7 +4,10 @@ import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { DeviceStatus, type Prisma } from "@/generated/prisma/client";
-import { DEVICE_STATUS_LABEL } from "@/lib/device-status";
+import {
+  DEVICE_STATUS_LABEL,
+  DEVICE_STATUSES_REQUIRING_UNMAP,
+} from "@/lib/device-status";
 
 export async function createDevice(formData: FormData) {
   const deviceTypeId = String(formData.get("deviceTypeId") ?? "");
@@ -268,17 +271,44 @@ export async function changeDeviceStatus(formData: FormData) {
 
   const device = await prisma.device.findUniqueOrThrow({
     where: { id: deviceId },
-    select: { status: true },
+    select: {
+      status: true,
+      mappings: { where: { unmappedAt: null }, select: { id: true, customerId: true } },
+    },
   });
+
+  const activeMapping = device.mappings[0];
+  // 재고/회수완료/폐기 상태의 장비는 고객사에 매핑된 채로 존재할 수 없다 — 자동으로 매핑 해제
+  const shouldAutoUnmap =
+    DEVICE_STATUSES_REQUIRING_UNMAP.includes(toStatus) && Boolean(activeMapping);
 
   await prisma.$transaction([
     prisma.device.update({ where: { id: deviceId }, data: { status: toStatus } }),
     prisma.deviceStatusLog.create({
-      data: { deviceId, fromStatus: device.status, toStatus, note },
+      data: {
+        deviceId,
+        fromStatus: device.status,
+        toStatus,
+        note: shouldAutoUnmap
+          ? [note, "상태 변경으로 고객사 매핑 자동 해제"].filter(Boolean).join(" / ")
+          : note,
+      },
     }),
+    ...(shouldAutoUnmap
+      ? [
+          prisma.deviceMapping.update({
+            where: { id: activeMapping!.id },
+            data: { unmappedAt: new Date() },
+          }),
+        ]
+      : []),
   ]);
 
   revalidatePath("/devices");
+  revalidatePath(`/devices/${deviceId}`);
+  if (shouldAutoUnmap && activeMapping) {
+    revalidatePath(`/customers/${activeMapping.customerId}`);
+  }
 }
 
 export async function addSanitization(formData: FormData) {

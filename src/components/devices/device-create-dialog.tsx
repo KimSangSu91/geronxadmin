@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createDevice } from "@/app/devices/actions";
+import { toSelectItems } from "@/lib/utils";
 
 type DeviceTypeOption = { id: string; name: string };
 
@@ -42,7 +43,11 @@ export function DeviceCreateDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="deviceTypeId">디바이스구분 *</Label>
-            <Select name="deviceTypeId" required>
+            <Select
+              name="deviceTypeId"
+              required
+              items={toSelectItems(deviceTypeOptions)}
+            >
               <SelectTrigger id="deviceTypeId" className="w-full">
                 <SelectValue placeholder="구분 선택" />
               </SelectTrigger>

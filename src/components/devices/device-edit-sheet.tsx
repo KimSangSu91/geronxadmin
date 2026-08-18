@@ -29,6 +29,7 @@ import {
   type DeviceDetail,
 } from "@/app/devices/actions";
 import { DEVICE_STATUS_LABEL, DEVICE_STATUS_ORDER } from "@/lib/device-status";
+import { toSelectItems } from "@/lib/utils";
 
 type DeviceTypeOption = { id: string; name: string };
 
@@ -65,6 +66,7 @@ export function DeviceEditSheet({
                 name="deviceTypeId"
                 defaultValue={detail.deviceTypeId}
                 required
+                items={toSelectItems(deviceTypeOptions)}
               >
                 <SelectTrigger id="deviceTypeId" className="w-full">
                   <SelectValue />
@@ -164,14 +166,25 @@ export function DeviceEditSheet({
 }
 
 function StatusSection({ detail }: { detail: DeviceDetail }) {
+  const [status, setStatus] = useState(detail.status);
+  // detail은 서버에서 revalidate된 최신 값을 내려받으므로(자동 매핑 해제 등으로
+  // 상태가 바뀔 수 있음) 프롭이 바뀌면 로컬 상태도 함께 동기화한다.
+  // (렌더 중 조건부 setState — React가 권장하는 "프롭에서 파생된 상태 재설정" 패턴)
+  const [syncedStatus, setSyncedStatus] = useState(detail.status);
+  if (detail.status !== syncedStatus) {
+    setSyncedStatus(detail.status);
+    setStatus(detail.status);
+  }
   const [isPending, startTransition] = useTransition();
 
   function handleStatusChange(value: unknown) {
+    const next = String(value) as typeof status;
     const formData = new FormData();
     formData.set("deviceId", detail.id);
-    formData.set("status", String(value));
+    formData.set("status", next);
     startTransition(async () => {
       await changeDeviceStatus(formData);
+      setStatus(next);
     });
   }
 
@@ -180,9 +193,10 @@ function StatusSection({ detail }: { detail: DeviceDetail }) {
       <div className="flex flex-col gap-1.5">
         <Label>상태</Label>
         <Select
-          defaultValue={detail.status}
+          value={status}
           onValueChange={handleStatusChange}
           disabled={isPending}
+          items={DEVICE_STATUS_LABEL}
         >
           <SelectTrigger className="w-40">
             <SelectValue />
