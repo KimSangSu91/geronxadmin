@@ -1,8 +1,9 @@
 "use server";
 
+import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { DeviceStatus } from "@/generated/prisma/client";
+import { DeviceStatus, type Prisma } from "@/generated/prisma/client";
 import { DEVICE_STATUS_LABEL } from "@/lib/device-status";
 
 export async function createDevice(formData: FormData) {
@@ -10,6 +11,9 @@ export async function createDevice(formData: FormData) {
   const deviceName = String(formData.get("deviceName") ?? "").trim();
   const deviceUid = String(formData.get("deviceUid") ?? "").trim();
   const serialNumber = String(formData.get("serialNumber") ?? "").trim() || null;
+  const manufacturingNumber =
+    String(formData.get("manufacturingNumber") ?? "").trim() || null;
+  const description = String(formData.get("description") ?? "").trim() || null;
   const receivedDateRaw = String(formData.get("receivedDate") ?? "");
   const registeredDateRaw = String(formData.get("registeredDate") ?? "");
 
@@ -23,12 +27,48 @@ export async function createDevice(formData: FormData) {
       deviceName,
       deviceUid,
       serialNumber,
+      manufacturingNumber,
+      description,
       receivedDate: receivedDateRaw ? new Date(receivedDateRaw) : null,
       registeredDate: registeredDateRaw ? new Date(registeredDateRaw) : null,
     },
   });
 
   revalidatePath("/devices");
+}
+
+export async function updateDevice(formData: FormData) {
+  const deviceId = String(formData.get("deviceId") ?? "");
+  const deviceTypeId = String(formData.get("deviceTypeId") ?? "");
+  const deviceName = String(formData.get("deviceName") ?? "").trim();
+  const deviceUid = String(formData.get("deviceUid") ?? "").trim();
+  const serialNumber = String(formData.get("serialNumber") ?? "").trim() || null;
+  const manufacturingNumber =
+    String(formData.get("manufacturingNumber") ?? "").trim() || null;
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const receivedDateRaw = String(formData.get("receivedDate") ?? "");
+  const registeredDateRaw = String(formData.get("registeredDate") ?? "");
+
+  if (!deviceId || !deviceTypeId || !deviceName || !deviceUid) {
+    throw new Error("디바이스구분, 디바이스명, 디바이스아이디는 필수입니다.");
+  }
+
+  await prisma.device.update({
+    where: { id: deviceId },
+    data: {
+      deviceTypeId,
+      deviceName,
+      deviceUid,
+      serialNumber,
+      manufacturingNumber,
+      description,
+      receivedDate: receivedDateRaw ? new Date(receivedDateRaw) : null,
+      registeredDate: registeredDateRaw ? new Date(registeredDateRaw) : null,
+    },
+  });
+
+  revalidatePath("/devices");
+  revalidatePath(`/devices/${deviceId}`);
 }
 
 export async function bulkMapDevices(formData: FormData) {
@@ -108,6 +148,115 @@ export async function bulkUnmapDevices(formData: FormData) {
   affectedCustomerIds.forEach((id) => revalidatePath(`/customers/${id}`));
 }
 
+export type MappingConflict = {
+  deviceId: string;
+  deviceLabel: string;
+  currentCustomerName: string;
+};
+
+// 매핑 실행 전 사전 확인 — 선택한 장비 중 "다른" 고객사에 이미 매핑된 것이 있는지 조회
+export async function checkDeviceMappingConflicts(
+  deviceIds: string[],
+  targetCustomerId: string,
+): Promise<MappingConflict[]> {
+  if (deviceIds.length === 0) return [];
+
+  const activeMappings = await prisma.deviceMapping.findMany({
+    where: {
+      deviceId: { in: deviceIds },
+      unmappedAt: null,
+      NOT: { customerId: targetCustomerId },
+    },
+    include: {
+      device: { include: { deviceType: true } },
+      customer: true,
+    },
+  });
+
+  return activeMappings.map((m) => ({
+    deviceId: m.deviceId,
+    deviceLabel: `${m.device.deviceType.name} · ${m.device.deviceName} (${m.device.deviceUid})`,
+    currentCustomerName: m.customer.name,
+  }));
+}
+
+// 장비 리스트 화면의 "장비 매핑하기" 흐름 전용 — 재고 장비는 새로 매핑하고,
+// 이미 다른 고객사에 매핑된 장비는(사용자가 변경을 확인한 뒤) 기존 매핑을 해제하고 재매핑한다.
+export async function mapDevicesToCustomer(
+  formData: FormData,
+): Promise<{ mappedCount: number }> {
+  const deviceIds = formData.getAll("deviceIds").map(String);
+  const customerId = String(formData.get("customerId") ?? "");
+
+  if (deviceIds.length === 0 || !customerId) {
+    throw new Error("잘못된 요청입니다.");
+  }
+
+  const devices = await prisma.device.findMany({
+    where: {
+      id: { in: deviceIds },
+      status: { in: [DeviceStatus.IN_STOCK, DeviceStatus.MAPPING] },
+    },
+    include: { mappings: { where: { unmappedAt: null } } },
+  });
+
+  const operations: Prisma.PrismaPromise<unknown>[] = [];
+  const affectedCustomerIds = new Set<string>([customerId]);
+  let mappedCount = 0;
+
+  for (const device of devices) {
+    const activeMapping = device.mappings[0];
+    if (activeMapping && activeMapping.customerId === customerId) {
+      continue; // 이미 동일 고객사에 매핑되어 있어 변경 없음
+    }
+
+    if (activeMapping) {
+      operations.push(
+        prisma.deviceMapping.update({
+          where: { id: activeMapping.id },
+          data: { unmappedAt: new Date() },
+        }),
+      );
+      affectedCustomerIds.add(activeMapping.customerId);
+    }
+
+    operations.push(
+      prisma.deviceMapping.create({ data: { deviceId: device.id, customerId } }),
+    );
+
+    if (device.status !== DeviceStatus.MAPPING) {
+      operations.push(
+        prisma.device.update({
+          where: { id: device.id },
+          data: { status: DeviceStatus.MAPPING },
+        }),
+      );
+    }
+
+    operations.push(
+      prisma.deviceStatusLog.create({
+        data: {
+          deviceId: device.id,
+          fromStatus: device.status,
+          toStatus: DeviceStatus.MAPPING,
+          note: activeMapping ? "고객사 재매핑" : null,
+        },
+      }),
+    );
+
+    mappedCount += 1;
+  }
+
+  if (operations.length > 0) {
+    await prisma.$transaction(operations);
+  }
+
+  revalidatePath("/devices");
+  affectedCustomerIds.forEach((id) => revalidatePath(`/customers/${id}`));
+
+  return { mappedCount };
+}
+
 export async function changeDeviceStatus(formData: FormData) {
   const deviceId = String(formData.get("deviceId") ?? "");
   const toStatus = String(formData.get("status") ?? "") as DeviceStatus;
@@ -176,9 +325,12 @@ export type DeviceTimelineEntry = {
 
 export type DeviceDetail = {
   id: string;
+  deviceTypeId: string;
   deviceName: string;
   deviceUid: string;
   serialNumber: string | null;
+  manufacturingNumber: string | null;
+  description: string | null;
   deviceTypeName: string;
   status: DeviceStatus;
   receivedDate: string | null;
@@ -267,9 +419,12 @@ export async function getDeviceDetail(
 
   return {
     id: device.id,
+    deviceTypeId: device.deviceTypeId,
     deviceName: device.deviceName,
     deviceUid: device.deviceUid,
     serialNumber: device.serialNumber,
+    manufacturingNumber: device.manufacturingNumber,
+    description: device.description,
     deviceTypeName: device.deviceType.name,
     status: device.status,
     receivedDate: device.receivedDate ? device.receivedDate.toISOString() : null,
@@ -282,4 +437,178 @@ export async function getDeviceDetail(
       : null,
     timeline,
   };
+}
+
+export type DeviceImportRowError = {
+  row: number;
+  messages: string[];
+};
+
+export type DeviceImportResult =
+  | { success: true; insertedCount: number }
+  | { success: false; errors: DeviceImportRowError[] };
+
+// 엑셀 셀 값을 문자열로 정규화 (하이퍼링크/리치텍스트 객체, 숫자 등 모두 텍스트로 변환)
+function cellToText(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object" && "text" in value) {
+    return String((value as { text: unknown }).text ?? "").trim();
+  }
+  return String(value).trim();
+}
+
+// Excel(.xlsx) A~F열 일괄 등록 — 디바이스구분/디바이스명/디바이스아이디/시리얼/제조번호/설명
+// 한 행이라도 검증에 실패하면 아무것도 등록하지 않는다 (전체 성공 또는 전체 실패)
+export async function bulkImportDevices(
+  formData: FormData,
+): Promise<DeviceImportResult> {
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { success: false, errors: [{ row: 0, messages: ["파일을 선택해주세요."] }] };
+  }
+  if (!file.name.toLowerCase().endsWith(".xlsx")) {
+    return {
+      success: false,
+      errors: [{ row: 0, messages: [".xlsx 파일만 업로드할 수 있습니다."] }],
+    };
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(await file.arrayBuffer());
+  } catch {
+    return {
+      success: false,
+      errors: [
+        { row: 0, messages: ["엑셀 파일을 읽을 수 없습니다. 파일 형식을 확인해주세요."] },
+      ],
+    };
+  }
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    return { success: false, errors: [{ row: 0, messages: ["시트를 찾을 수 없습니다."] }] };
+  }
+
+  const [deviceTypes, existingDevices] = await Promise.all([
+    prisma.deviceTypeMaster.findMany({ select: { id: true, name: true } }),
+    prisma.device.findMany({ select: { deviceUid: true, serialNumber: true } }),
+  ]);
+  const typeByName = new Map(deviceTypes.map((t) => [t.name.trim(), t.id]));
+  const existingUids = new Set(existingDevices.map((d) => d.deviceUid));
+  const existingSerials = new Set(
+    existingDevices
+      .map((d) => d.serialNumber)
+      .filter((s): s is string => Boolean(s)),
+  );
+
+  type ParsedRow = {
+    deviceTypeId: string;
+    deviceName: string;
+    deviceUid: string;
+    serialNumber: string | null;
+    manufacturingNumber: string | null;
+    description: string | null;
+  };
+
+  const parsedRows: ParsedRow[] = [];
+  const errors: DeviceImportRowError[] = [];
+  const seenUidsInFile = new Map<string, number>();
+  const seenSerialsInFile = new Map<string, number>();
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return; // 1행은 헤더로 간주하고 건너뜀
+
+    const typeNameRaw = cellToText(row.getCell(1).value);
+    const deviceName = cellToText(row.getCell(2).value);
+    const deviceUid = cellToText(row.getCell(3).value);
+    const serialNumber = cellToText(row.getCell(4).value) || null;
+    const manufacturingNumber = cellToText(row.getCell(5).value) || null;
+    const description = cellToText(row.getCell(6).value) || null;
+
+    const isEmptyRow =
+      !typeNameRaw &&
+      !deviceName &&
+      !deviceUid &&
+      !serialNumber &&
+      !manufacturingNumber &&
+      !description;
+    if (isEmptyRow) return;
+
+    const rowMessages: string[] = [];
+    if (!typeNameRaw) rowMessages.push("디바이스 구분이 비어 있습니다.");
+    if (!deviceName) rowMessages.push("디바이스명이 비어 있습니다.");
+    if (!deviceUid) rowMessages.push("디바이스아이디가 비어 있습니다.");
+
+    const deviceTypeId = typeNameRaw ? typeByName.get(typeNameRaw) : undefined;
+    if (typeNameRaw && !deviceTypeId) {
+      rowMessages.push(`알 수 없는 디바이스 구분입니다: "${typeNameRaw}"`);
+    }
+
+    if (deviceUid) {
+      if (existingUids.has(deviceUid)) {
+        rowMessages.push(`이미 등록된 디바이스아이디입니다: ${deviceUid}`);
+      }
+      if (seenUidsInFile.has(deviceUid)) {
+        rowMessages.push(
+          `파일 내에서 디바이스아이디가 중복됩니다: ${deviceUid} (${seenUidsInFile.get(deviceUid)}행과 중복)`,
+        );
+      } else {
+        seenUidsInFile.set(deviceUid, rowNumber);
+      }
+    }
+
+    if (serialNumber) {
+      if (existingSerials.has(serialNumber)) {
+        rowMessages.push(`이미 등록된 시리얼번호입니다: ${serialNumber}`);
+      }
+      if (seenSerialsInFile.has(serialNumber)) {
+        rowMessages.push(
+          `파일 내에서 시리얼번호가 중복됩니다: ${serialNumber} (${seenSerialsInFile.get(serialNumber)}행과 중복)`,
+        );
+      } else {
+        seenSerialsInFile.set(serialNumber, rowNumber);
+      }
+    }
+
+    if (rowMessages.length > 0) {
+      errors.push({ row: rowNumber, messages: rowMessages });
+      return;
+    }
+
+    parsedRows.push({
+      deviceTypeId: deviceTypeId!,
+      deviceName,
+      deviceUid,
+      serialNumber,
+      manufacturingNumber,
+      description,
+    });
+  });
+
+  if (parsedRows.length === 0 && errors.length === 0) {
+    return {
+      success: false,
+      errors: [{ row: 0, messages: ["등록할 데이터가 없습니다."] }],
+    };
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors: errors.sort((a, b) => a.row - b.row) };
+  }
+
+  await prisma.device.createMany({
+    data: parsedRows.map((r) => ({
+      deviceTypeId: r.deviceTypeId,
+      deviceName: r.deviceName,
+      deviceUid: r.deviceUid,
+      serialNumber: r.serialNumber,
+      manufacturingNumber: r.manufacturingNumber,
+      description: r.description,
+    })),
+  });
+
+  revalidatePath("/devices");
+  return { success: true, insertedCount: parsedRows.length };
 }

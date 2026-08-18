@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -73,13 +74,23 @@ export function DeviceCreateDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor="manufacturingNumber">제조번호</Label>
+              <Input id="manufacturingNumber" name="manufacturingNumber" />
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="receivedDate">입고일</Label>
               <Input id="receivedDate" name="receivedDate" type="date" />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="registeredDate">등록일</Label>
-              <Input id="registeredDate" name="registeredDate" type="date" />
-            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="registeredDate">등록일</Label>
+            <Input id="registeredDate" name="registeredDate" type="date" />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="description">설명</Label>
+            <Textarea id="description" name="description" rows={3} />
           </div>
 
           <DialogFooter>

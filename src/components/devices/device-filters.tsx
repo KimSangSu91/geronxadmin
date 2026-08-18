@@ -4,22 +4,37 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DeviceStatus } from "@/generated/prisma/client";
 import { DEVICE_STATUS_LABEL, DEVICE_STATUS_ORDER } from "@/lib/device-status";
 
 type DeviceTypeOption = { id: string; name: string };
+type CustomerOption = { id: string; name: string };
+
+export const DEVICE_UNMAPPED_FILTER_VALUE = "__unmapped__";
+const ALL_VALUE = "__all__";
 
 export function DeviceFilters({
   initialQuery,
   initialStatuses,
   initialTypeIds,
+  initialCustomerFilter,
   deviceTypeOptions,
+  customerOptions,
 }: {
   initialQuery: string;
   initialStatuses: DeviceStatus[];
   initialTypeIds: string[];
+  initialCustomerFilter: string;
   deviceTypeOptions: DeviceTypeOption[];
+  customerOptions: CustomerOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -63,6 +78,13 @@ export function DeviceFilters({
     });
   }
 
+  function handleCustomerChange(value: unknown) {
+    pushParams((params) => {
+      if (value === ALL_VALUE) params.delete("customer");
+      else params.set("customer", String(value));
+    });
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <Input
@@ -71,6 +93,24 @@ export function DeviceFilters({
         onChange={(e) => setQuery(e.target.value)}
         className="max-w-sm"
       />
+
+      <Select
+        value={initialCustomerFilter || ALL_VALUE}
+        onValueChange={handleCustomerChange}
+      >
+        <SelectTrigger className="w-52">
+          <SelectValue placeholder="고객사 필터" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>전체</SelectItem>
+          <SelectItem value={DEVICE_UNMAPPED_FILTER_VALUE}>미매핑</SelectItem>
+          {customerOptions.map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <div className="flex flex-wrap gap-2">
         {deviceTypeOptions.map((type) => {

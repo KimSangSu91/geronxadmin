@@ -5,7 +5,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-const DEVICE_TYPES = ["늘밴드", "늘허브", "8구차저"];
+const DEVICE_TYPES = ["늘밴드", "늘허브", "8구충전기"];
 
 const CHECKLIST_ITEMS = [
   "계약서/인수증 업로드",

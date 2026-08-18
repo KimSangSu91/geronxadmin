@@ -183,15 +183,17 @@ enum DeviceStatus {
 }
 
 model Device {
-  id             String           @id @default(uuid())
-  deviceTypeId   String           @map("device_type_id")
-  deviceType     DeviceTypeMaster @relation(fields: [deviceTypeId], references: [id])
-  deviceName     String           @map("device_name")
-  deviceUid      String           @unique @map("device_uid")
-  serialNumber   String?          @unique @map("serial_number")
-  receivedDate   DateTime?        @map("received_date")
-  registeredDate DateTime?        @map("registered_date")
-  status         DeviceStatus     @default(IN_STOCK)
+  id                  String           @id @default(uuid())
+  deviceTypeId        String           @map("device_type_id")
+  deviceType          DeviceTypeMaster @relation(fields: [deviceTypeId], references: [id])
+  deviceName          String           @map("device_name")
+  deviceUid           String           @unique @map("device_uid")
+  serialNumber        String?          @unique @map("serial_number")
+  manufacturingNumber String?          @map("manufacturing_number")
+  description         String?
+  receivedDate        DateTime?        @map("received_date")
+  registeredDate      DateTime?        @map("registered_date")
+  status              DeviceStatus     @default(IN_STOCK)
 
   mappings      DeviceMapping[]
   statusLogs    DeviceStatusLog[]

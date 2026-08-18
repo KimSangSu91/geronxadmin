@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import type { DeviceStatus, Prisma } from "@/generated/prisma/client";
 import { DEVICE_STATUS_ORDER } from "@/lib/device-status";
-import { DeviceFilters } from "@/components/devices/device-filters";
+import {
+  DeviceFilters,
+  DEVICE_UNMAPPED_FILTER_VALUE,
+} from "@/components/devices/device-filters";
 import { DeviceCreateDialog } from "@/components/devices/device-create-dialog";
+import { DeviceBulkImportDialog } from "@/components/devices/device-bulk-import-dialog";
 import { DeviceTable } from "@/components/devices/device-table";
 import {
   Pagination,
@@ -35,6 +39,8 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
     : typeParam
       ? [typeParam]
       : [];
+  const customerFilter =
+    typeof searchParams.customer === "string" ? searchParams.customer : "";
   const page = Math.max(1, Number(searchParams.page) || 1);
 
   const where: Prisma.DeviceWhereInput = {
@@ -49,6 +55,11 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
           ],
         }
       : {}),
+    ...(customerFilter === DEVICE_UNMAPPED_FILTER_VALUE
+      ? { mappings: { none: { unmappedAt: null } } }
+      : customerFilter
+        ? { mappings: { some: { unmappedAt: null, customerId: customerFilter } } }
+        : {}),
   };
 
   const [totalCount, devices, deviceTypeOptions, customerOptions] =
@@ -56,7 +67,14 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
       prisma.device.count({ where }),
       prisma.device.findMany({
         where,
-        include: { deviceType: true },
+        include: {
+          deviceType: true,
+          mappings: {
+            where: { unmappedAt: null },
+            include: { customer: true },
+            take: 1,
+          },
+        },
         orderBy: { registeredDate: "desc" },
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
@@ -77,6 +95,7 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
     if (q) params.set("q", q);
     statuses.forEach((s) => params.append("status", s));
     typeIds.forEach((t) => params.append("type", t));
+    if (customerFilter) params.set("customer", customerFilter);
     params.set("page", String(targetPage));
     return `/devices?${params.toString()}`;
   };
@@ -90,17 +109,35 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
             전체 {totalCount.toLocaleString()}건
           </p>
         </div>
-        <DeviceCreateDialog deviceTypeOptions={deviceTypeOptions} />
+        <div className="flex items-center gap-2">
+          <DeviceBulkImportDialog />
+          <DeviceCreateDialog deviceTypeOptions={deviceTypeOptions} />
+        </div>
       </div>
 
       <DeviceFilters
         initialQuery={q}
         initialStatuses={statuses}
         initialTypeIds={typeIds}
+        initialCustomerFilter={customerFilter}
         deviceTypeOptions={deviceTypeOptions}
+        customerOptions={customerOptions}
       />
 
-      <DeviceTable devices={devices} customerOptions={customerOptions} />
+      <DeviceTable
+        devices={devices.map((d) => ({
+          id: d.id,
+          deviceName: d.deviceName,
+          deviceUid: d.deviceUid,
+          serialNumber: d.serialNumber,
+          receivedDate: d.receivedDate,
+          registeredDate: d.registeredDate,
+          status: d.status,
+          deviceType: { name: d.deviceType.name },
+          currentCustomerName: d.mappings[0]?.customer.name ?? null,
+        }))}
+        customerOptions={customerOptions}
+      />
 
       {totalPages > 1 && (
         <Pagination>
